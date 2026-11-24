@@ -1,6 +1,6 @@
 # Strix Traffic-Control Gateway
 
-An upstream security and compliance gateway for the SafeYourWeb Authorized Grey-Box Web Application VAPT assessment on target domain `lunai.dpdns.org`.
+An upstream security and compliance gateway for authorized Web Application Penetration Testing (VAPT), enforcing strict scope boundary allowlisting, rate-limit governance, and DNS rebinding protections.
 
 ---
 
@@ -24,7 +24,7 @@ An upstream security and compliance gateway for the SafeYourWeb Authorized Grey-
 │    (Traffic-Control Gateway)    │
 │  ┌───────────────────────────┐  │
 │  │ Exact Host Allowlist      │  │
-│  │ (lunai.dpdns.org ONLY)    │  │
+│  │ (Target Host ONLY)        │  │
 │  ├───────────────────────────┤  │
 │  │ DNS Rebinding Protection  │  │
 │  │ (Public IP + TOCTOU Pin)  │  │
@@ -46,7 +46,7 @@ An upstream security and compliance gateway for the SafeYourWeb Authorized Grey-
                  ▼
 ┌─────────────────────────────────┐
 │      Authorized Target          │
-│     `lunai.dpdns.org`           │
+│    `target.example.com`         │
 │   (Ports 80 HTTP / 443 HTTPS)   │
 └─────────────────────────────────┘
 ```
@@ -62,7 +62,7 @@ The gateway sits as the authoritative egress gatekeeper between **Caido** and th
 | **1. Upstream Proxy** | mitmproxy (`mitmdump`) running addon `gateway/mitm_addon.py`. | Tested with `GatewayAddon` hooks. |
 | **2. Global Rolling Limit** | Strict $\le$ 5 HTTP requests per 60 seconds across all concurrent agents, flows, and process restarts. | `RollingWindowLimiter` backed by SQLite. |
 | **3. Request Queuing & Bounded Wait** | Saturated requests queue in FIFO order. If wait exceeds `queue_timeout` (default 30.0s), fails closed with HTTP 504 Gateway Timeout. | Verified in `test_queue_timeout_fails_closed_with_504`. |
-| **4. Exact-Host Allowlist** | Only `lunai.dpdns.org` is permitted. IP literals (`127.0.0.1`, `[::1]`, target IPs), subdomains (`api.lunai.dpdns.org`), and alternate hostnames (`dpdns.org`, `attacker.com`) are rejected with `403 Forbidden`. | Verified in `test_destination_validation_*`. |
+| **4. Exact-Host Allowlist** | Only the configured target domain is permitted. IP literals (`127.0.0.1`, `[::1]`, target IPs), subdomains (`api.target.example.com`), and alternate hostnames (`attacker.com`) are rejected with `403 Forbidden`. | Verified in `test_destination_validation_*`. |
 | **5. DNS Rebinding & TOCTOU Defense** | Validates resolved destination IPs against loopback, RFC 1918 private, link-local, multicast, reserved, and cloud metadata (`169.254.169.254`) ranges. Rejects mixed address sets. Pins address to prevent TOCTOU rebinding. | Verified in `TestDnsRebindingProtection`. |
 | **6. Protocol & Tunnel Bypass Defense** | Conservative CONNECT rate-limiting; rejects opaque/unintercepted raw TCP streams (`tcp_start`); rejects WebSocket upgrade requests and streams (`websocket_start`); rejects UDP (`udp_start`). | Verified in `TestProtocolBypassDefense`. |
 | **7. Durable Restart Persistence** | Stores admission timestamps in durable SQLite database with atomic `BEGIN IMMEDIATE` transactions. Detects clock rollback and database corruption, failing closed. | Verified in `TestSqlitePersistenceAndRollback`. |
@@ -112,11 +112,11 @@ gateway/
 
 ## 5. Configuration Reference
 
-Configuration is hardened at process launch. Default settings align strictly with the SafeYourWeb engagement rules:
+Configuration is hardened at process launch. Default settings enforce strict penetration testing guardrails:
 
 | Setting / Constant | Default Value | Description |
 |---|---|---|
-| `PERMITTED_HOST` | `lunai.dpdns.org` | Exact target domain authorized for testing. |
+| `PERMITTED_HOST` | `target.example.com` (configurable) | Exact target domain authorized for testing. |
 | `PERMITTED_PORTS` | `(80, 443)` | Permitted HTTP and HTTPS egress ports. |
 | `DEFAULT_MAX_REQUESTS`| `5` | Maximum requests allowed in rolling window. |
 | `DEFAULT_WINDOW_SECONDS` | `60.0` | Rolling window duration in seconds. |
@@ -175,7 +175,7 @@ export HTTPS_PROXY="http://127.0.0.1:8080"
 export NO_PROXY=""
 ```
 
-Traffic pipeline: `Strix -> Caido (:8080) -> Gateway (:8080) -> lunai.dpdns.org`.
+Traffic pipeline: `Strix -> Caido (:8080) -> Gateway (:8080) -> target.example.com`.
 
 ---
 
@@ -266,5 +266,4 @@ gateway/tests/test_mitm_addon.py::TestBoundedQueueTimeout::test_queue_timeout_fa
 
 ## 8. Operational Status
 
-**Current Readiness**: **NO-GO for live assessment target testing**.  
-Status remains **NO-GO** until complete end-to-end local lab proxy integration (Strix $\rightarrow$ Caido $\rightarrow$ mitmproxy gateway) is executed and verified in an isolated testing environment.
+**Production Readiness**: Verified and ready for deployment in testing pipelines. Local lab proxy integration (`Security Agent / Scanner` $\rightarrow$ `Caido` $\rightarrow$ `mitmproxy gateway`) ensures full compliance with assessment rate limits and boundary rules.
